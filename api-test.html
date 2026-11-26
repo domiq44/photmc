@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PhotonMC WASM API Test Console</title>
+  <style>
+    :root {
+      --bg: #0f1419; --panel: #1a222c; --panel2: #222d3a;
+      --fg: #e6edf3; --muted: #9fb0c0; --accent: #4fa3ff;
+      --ref: #ff6b6b; --trans: #4dd4ac; --abs: #ffd166;
+      --border: #2f3b49; --ok: #4dd4ac; --err: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.5; font-size: 14px; }
+    header { padding: 16px; border-bottom: 1px solid var(--border); }
+    h1 { margin: 0; font-size: 1.2rem; }
+    .container { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
+    @media (max-width: 900px) { .container { grid-template-columns: 1fr; } }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .panel h2 { margin: 0 0 16px; font-size: 1rem; color: var(--accent); }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+    .field input, .field select { width: 100%; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); padding: 8px 10px; font-size: 0.9rem; }
+    .field input:focus, .field select:focus { outline: 2px solid var(--accent); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 600px) { .row { grid-template-columns: 1fr; } }
+    .actions { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+    button { background: var(--accent); color: #06121f; border: none; border-radius: 6px; padding: 10px 16px; font-size: 0.9rem; font-weight: 600; cursor: pointer; min-height: 40px; }
+    button:hover { filter: brightness(1.1); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary { background: var(--panel2); color: var(--fg); border: 1px solid var(--border); }
+    .status { padding: 12px; border-radius: 6px; font-size: 0.85rem; display: none; }
+    .status.ok { background: rgba(77, 212, 172, 0.15); border: 1px solid var(--trans); color: var(--trans); display: block; }
+    .status.err { background: rgba(255, 107, 107, 0.15); border: 1px solid var(--ref); color: var(--ref); display: block; }
+    .status.loading { background: rgba(79, 163, 255, 0.15); border: 1px solid var(--accent); color: var(--accent); display: block; }
+    pre { background: #0a0e13; border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow: auto; max-height: 50vh; font-size: 0.75rem; line-height: 1.4; }
+    .json-key { color: var(--accent); }
+    .json-string { color: var(--trans); }
+    .json-number { color: var(--abs); }
+    .json-bool { color: var(--ref); }
+    .json-null { color: var(--muted); }
+    .endpoint { font-family: monospace; font-size: 0.8rem; color: var(--muted); margin-bottom: 8px; }
+    .schema-link { font-size: 0.8rem; color: var(--muted); margin-top: 8px; display: block; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PhotonMC WASM API Test Console</h1>
+    <p style="margin: 4px 0 0; color: var(--muted); font-size: 0.85rem;">Interface interactive pour <code>em_run_simulation</code> / <code>em_free</code></p>
+  </header>
+
+  <div class="container">
+    <!-- Input Panel -->
+    <div class="panel">
+      <h2>Paramètres d'entrée (SimInput)</h2>
+      <p class="endpoint">POST /simulate → em_run_simulation(...)</p>
+
+      <div class="field" style="margin-bottom: 16px;">
+        <label>Cas de test standard</label>
+        <select id="test-case" onchange="loadTestCase(this.value)">
+          <option value="">— Personnalisé —</option>
+          <option value="sphere_tau1">Sphère τ=1, normal (validation analytique)</option>
+          <option value="cube_tau3">Cube τ=3, diffusif (scattering fort)</option>
+          <option value="cylinder_tau2">Cylindre τ=2, oblique θ=45°</option>
+          <option value="sphere_tau10">Sphère τ=10, absorption 0.2</option>
+          <option value="cube_tau01">Cube τ=0.1, quasi-transparent</option>
+          <option value="forward_peaked">Forward-peaked g1=0.9, f=0.8</option>
+          <option value="isotropic">Isotrope g1=g2=0, f=0.5</option>
+          <option value="backward">Backward g1=-0.8, f=0.7</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Shape (0=SPHERE, 1=CUBE, 2=CYLINDER)</label>
+          <select id="shape">
+            <option value="0">0 - SPHERE</option>
+            <option value="1">1 - CUBE</option>
+            <option value="2" selected>2 - CYLINDER</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Size (L_char)</label>
+          <input type="number" id="size" value="1.0" step="0.1" min="0.01">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Height (cylindre)</label>
+          <input type="number" id="height" value="2.0" step="0.1" min="0.01">
+        </div>
+        <div class="field">
+          <label>Tau (épaisseur optique)</label>
+          <input type="number" id="tau" value="3.0" step="0.1" min="0.01">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Theta (deg)</label>
+          <input type="number" id="theta" value="0" step="1" min="0" max="90">
+        </div>
+        <div class="field">
+          <label>Absorb [0,1]</label>
+          <input type="number" id="absorb" value="0.05" step="0.01" min="0" max="1">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>g1 [-1,1]</label>
+          <input type="number" id="g1" value="0.8" step="0.05" min="-1" max="1">
+        </div>
+        <div class="field">
+          <label>g2 [-1,1]</label>
+          <input type="number" id="g2" value="-0.3" step="0.05" min="-1" max="1">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>f (mélange) [0,1]</label>
+          <input type="number" id="f" value="0.7" step="0.05" min="0" max="1">
+        </div>
+        <div class="field">
+          <label>N photons</label>
+          <input type="number" id="nphotons" value="100000" step="10000" min="1" max="1000000000">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Bins angulaires</label>
+          <input type="number" id="bins" value="180" step="10" min="1" max="3600">
+        </div>
+        <div class="field">
+          <label>Seed (uint32)</label>
+          <input type="number" id="seed" value="12345" step="1" min="0" max="4294967295">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Max steps</label>
+          <input type="number" id="maxsteps" value="100000" step="1000" min="1" max="1000000">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="run-btn">Exécuter la simulation</button>
+        <button id="reset-btn" class="secondary">Réinitialiser</button>
+      </div>
+
+      <div id="status" class="status"></div>
+    </div>
+
+    <!-- Output Panel -->
+    <div class="panel">
+      <h2>Résultat (SimOutput)</h2>
+      <p class="endpoint">Retour : buffer double* → lu via HEAPF64</p>
+      
+<div id="status-out" class="status"></div>
+       
+      <pre id="output">En attente de simulation...</pre>
+       
+      <a href="https://github.com/domiq44/photmc/blob/main/web/photonmc.schema.json" class="schema-link" target="_blank">📄 JSON Schema (GitHub)</a>
+      <a href="https://github.com/domiq44/photmc/blob/main/web/photonmc.d.ts" class="schema-link" target="_blank">📄 TypeScript Definitions (GitHub)</a>
+      <a href="https://github.com/domiq44/photmc/blob/main/web/API.md" class="schema-link" target="_blank">📄 API Documentation (GitHub)</a>
+    </div>
+  </div>
+
+  <script>
+    // Chargement optionnel du module WebAssembly (comme index.html)
+    // En local (serveur Python) ce fichier est absent : le basculement se fait en mode API HTTP.
+    var _wasmScript = document.createElement('script');
+    _wasmScript.src = 'photonmc.js';
+    _wasmScript.onerror = function () { window._photonmcWasmMissing = true; };
+    document.head.appendChild(_wasmScript);
+  </script>
+  <script>
+    // Load WASM module
+    let Module = null;
+    let em_run_simulation = null;
+    let em_free = null;
+    let wasmReady = false;
+
+    async function loadWasm() {
+      var moduleStartTime = Date.now();
+
+      async function waitForModule() {
+        if (typeof PhotonMCModule !== 'undefined') {
+          try {
+            Module = await PhotonMCModule();
+            em_run_simulation = Module.cwrap('em_run_simulation', 'number', [
+              'number', 'number', 'number', 'number', 'number',
+              'number', 'number', 'number', 'number',
+              'number', 'number', 'number', 'number', 'number'
+            ]);
+            em_free = Module.cwrap('em_free', null, ['number']);
+            wasmReady = true;
+            setStatus('WASM chargé ✓', 'ok');
+          } catch (e) {
+            setStatus('Erreur init WASM : ' + e.message, 'err');
+            console.error('WASM init error:', e);
+          }
+        } else if (Date.now() - moduleStartTime > 10000) {
+          setStatus('Timeout chargement WASM (10s)', 'err');
+        } else {
+          setTimeout(waitForModule, 100);
+        }
+      }
+      waitForModule();
+    }
+
+    function setStatus(msg, cls) {
+      const s = document.getElementById('status');
+      s.textContent = msg;
+      s.className = 'status ' + cls;
+    }
+
+    function setStatusOut(msg, cls) {
+      const s = document.getElementById('status-out');
+      s.textContent = msg;
+      s.className = 'status ' + cls;
+    }
+
+    function collectParams() {
+      return {
+        shape: parseInt(document.getElementById('shape').value),
+        size: parseFloat(document.getElementById('size').value),
+        height: parseFloat(document.getElementById('height').value),
+        tau: parseFloat(document.getElementById('tau').value),
+        theta: parseFloat(document.getElementById('theta').value),
+        absorb: parseFloat(document.getElementById('absorb').value),
+        g1: parseFloat(document.getElementById('g1').value),
+        g2: parseFloat(document.getElementById('g2').value),
+        f: parseFloat(document.getElementById('f').value),
+        nphotons: parseInt(document.getElementById('nphotons').value),
+        bins: parseInt(document.getElementById('bins').value),
+        seed: parseInt(document.getElementById('seed').value),
+        maxsteps: parseInt(document.getElementById('maxsteps').value)
+      };
+    }
+
+    function formatJSON(obj) {
+      return JSON.stringify(obj, null, 2)
+        .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?)/g, '<span class="json-string">$1</span>')
+        .replace(/(\b\d+\.?\d*\b)/g, '<span class="json-number">$1</span>')
+        .replace(/\b(true|false)\b/g, '<span class="json-bool">$1</span>')
+        .replace(/\bnull\b/g, '<span class="json-null">$1</span>')
+        .replace(/(".*?")(\s*:)/g, '<span class="json-key">$1</span>$2');
+    }
+
+    async function runSimulation() {
+      if (!wasmReady) {
+        setStatusOut('WASM non prêt', 'err');
+        return;
+      }
+
+      const params = collectParams();
+      const btn = document.getElementById('run-btn');
+      btn.disabled = true;
+      setStatusOut('Simulation en cours...', 'loading');
+      document.getElementById('output').textContent = 'Calcul...';
+
+      const outSizePtr = Module._malloc(4);
+
+      try {
+        const ptr = em_run_simulation(
+          params.shape, params.size, params.height, params.tau, params.theta,
+          params.absorb, params.g1, params.g2, params.f,
+          params.nphotons, params.bins, params.seed, params.maxsteps,
+          outSizePtr
+        );
+
+        if (!ptr) throw new Error('em_run_simulation returned NULL');
+
+        const outSize = Module.getValue(outSizePtr, 'i32');
+        const result = readSimResult(Module, ptr, outSize);
+
+        em_free(ptr);
+        Module._free(outSizePtr);
+
+        document.getElementById('output').innerHTML = formatJSON(result);
+        setStatusOut(`Succès : R=${result.reflected.toFixed(4)} T=${result.transmitted.toFixed(4)} A=${result.absorbed.toFixed(4)} (photons_in=${result.photons_in})`, 'ok');
+      } catch (e) {
+        Module._free(outSizePtr);
+        setStatusOut('Erreur : ' + e.message, 'err');
+        document.getElementById('output').textContent = 'Erreur : ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function readSimResult(Module, ptr, outSize) {
+      // Use Module.getValue for reliable access (works regardless of heap view initialization)
+      const base = ptr / 8; // double = 8 bytes
+      
+      const reflected = Module.getValue(ptr + 0 * 8, 'double');
+      const transmitted = Module.getValue(ptr + 1 * 8, 'double');
+      const absorbed = Module.getValue(ptr + 2 * 8, 'double');
+      const out_weight = Module.getValue(ptr + 3 * 8, 'double');
+      const photons_in = Module.getValue(ptr + 4 * 8, 'double');
+      const mean_collisions = Module.getValue(ptr + 5 * 8, 'double');
+      const mean_depth = Module.getValue(ptr + 6 * 8, 'double');
+      const nbins = Module.getValue(ptr + 7 * 8, 'double');
+      const max_collisions = Module.getValue(ptr + 8 * 8, 'double');
+      const ndepth = Module.getValue(ptr + 9 * 8, 'double');
+
+      let off = 10;
+      const hist_weight = [], hist_count = [];
+      for (let i = 0; i < nbins; i++) {
+        hist_weight.push(Module.getValue(ptr + off * 8, 'double')); off++;
+        hist_count.push(Module.getValue(ptr + off * 8, 'double')); off++;
+      }
+      const hist_collisions = [];
+      for (let i = 0; i < max_collisions; i++) {
+        hist_collisions.push(Module.getValue(ptr + off * 8, 'double')); off++;
+      }
+      const hist_depth = [];
+      for (let i = 0; i < ndepth; i++) {
+        hist_depth.push(Module.getValue(ptr + off * 8, 'double')); off++;
+      }
+
+      return {
+        reflected, transmitted, absorbed, out_weight,
+        photons_in, mean_collisions, mean_depth,
+        nbins, max_collisions, ndepth,
+        hist_weight, hist_count, hist_collisions, hist_depth
+      };
+    }
+
+    function loadTestCase(key) {
+      const cases = {
+        'sphere_tau1': { shape: 0, size: 1, height: 2, tau: 1, theta: 0, absorb: 0.01, g1: 0.8, g2: -0.3, f: 0.7, nphotons: 400000, bins: 180, seed: 12345, maxsteps: 100000 },
+        'cube_tau3': { shape: 1, size: 1, height: 2, tau: 3, theta: 0, absorb: 0.05, g1: 0.8, g2: -0.3, f: 0.7, nphotons: 300000, bins: 180, seed: 12345, maxsteps: 100000 },
+        'cylinder_tau2': { shape: 2, size: 1, height: 2, tau: 2, theta: 45, absorb: 0.1, g1: 0.8, g2: -0.3, f: 0.7, nphotons: 300000, bins: 180, seed: 12345, maxsteps: 100000 },
+        'sphere_tau10': { shape: 0, size: 1, height: 2, tau: 10, theta: 0, absorb: 0.2, g1: 0.8, g2: -0.3, f: 0.7, nphotons: 200000, bins: 180, seed: 12345, maxsteps: 100000 },
+        'cube_tau01': { shape: 1, size: 1, height: 2, tau: 0.1, theta: 0, absorb: 0.0, g1: 0.0, g2: 0.0, f: 0.5, nphotons: 500000, bins: 180, seed: 12345, maxsteps: 100000 },
+        'forward_peaked': { shape: 1, size: 1, height: 2, tau: 3, theta: 0, absorb: 0.05, g1: 0.9, g2: 0.5, f: 0.8, nphotons: 300000, bins: 180, seed: 12345, maxsteps: 100000 },
+        'isotropic': { shape: 1, size: 1, height: 2, tau: 3, theta: 0, absorb: 0.05, g1: 0.0, g2: 0.0, f: 0.5, nphotons: 300000, bins: 180, seed: 12345, maxsteps: 100000 },
+        'backward': { shape: 1, size: 1, height: 2, tau: 3, theta: 0, absorb: 0.05, g1: -0.8, g2: -0.5, f: 0.7, nphotons: 300000, bins: 180, seed: 12345, maxsteps: 100000 },
+      };
+      const c = cases[key];
+      if (!c) return;
+      Object.keys(c).forEach(k => {
+        const el = document.getElementById(k);
+        if (el) el.value = c[k];
+      });
+    }
+
+    function resetForm() {
+      document.getElementById('shape').value = '1'; // CUBE (default in index.html)
+      document.getElementById('size').value = '1.0';
+      document.getElementById('height').value = '2.0';
+      document.getElementById('tau').value = '3.0';   // more interesting scattering
+      document.getElementById('theta').value = '0';
+      document.getElementById('absorb').value = '0.05'; // non-zero absorption
+      document.getElementById('g1').value = '0.8';    // forward scattering
+      document.getElementById('g2').value = '-0.3';   // backward component
+      document.getElementById('f').value = '0.7';     // mixed phase function
+      document.getElementById('nphotons').value = '300000'; // higher for better stats
+      document.getElementById('bins').value = '180';
+      document.getElementById('seed').value = '12345';
+      document.getElementById('maxsteps').value = '100000';
+      document.getElementById('output').textContent = 'En attente de simulation...';
+      document.getElementById('status').className = 'status';
+      document.getElementById('status').textContent = '';
+      document.getElementById('status-out').className = 'status';
+      document.getElementById('status-out').textContent = '';
+    }
+
+    document.getElementById('run-btn').addEventListener('click', runSimulation);
+    document.getElementById('reset-btn').addEventListener('click', resetForm);
+
+    // Auto-load WASM
+    loadWasm();
+  </script>
+</body>
+</html>
