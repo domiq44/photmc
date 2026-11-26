@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://domiq44.github.io/photmc/photonmc.schema.json",
+  "title": "PhotonMC WASM API Schema",
+  "description": "JSON Schema for PhotonMC WebAssembly simulation input and output",
+  "type": "object",
+  "definitions": {
+    "shapeType": {
+      "type": "integer",
+      "enum": [0, 1, 2],
+      "description": "0=SPHERE, 1=CUBE, 2=CYLINDER"
+    },
+    "simInput": {
+      "type": "object",
+      "required": ["shape", "size", "height", "tau", "theta", "absorb", "g1", "g2", "f", "nphotons", "bins", "seed", "maxsteps"],
+      "properties": {
+        "shape": { "$ref": "#/definitions/shapeType" },
+        "size": { "type": "number", "exclusiveMinimum": 0, "description": "L_char: rayon (sphere/cylinder) ou demi-arête (cube)" },
+        "height": { "type": "number", "exclusiveMinimum": 0, "description": "Hauteur totale cylindre (ignoré sphere/cube)" },
+        "tau": { "type": "number", "exclusiveMinimum": 0, "description": "Épaisseur optique le long de L_char" },
+        "theta": { "type": "number", "minimum": 0, "maximum": 90, "description": "Angle incidence degrés" },
+        "absorb": { "type": "number", "minimum": 0, "maximum": 1, "description": "Probabilité absorption par collision" },
+        "g1": { "type": "number", "minimum": -1, "maximum": 1, "description": "Asymétrie composante 1" },
+        "g2": { "type": "number", "minimum": -1, "maximum": 1, "description": "Asymétrie composante 2" },
+        "f": { "type": "number", "minimum": 0, "maximum": 1, "description": "Mélange (poids de g1)" },
+        "nphotons": { "type": "integer", "minimum": 1, "maximum": 1000000000, "description": "Nombre de photons incidents" },
+        "bins": { "type": "integer", "minimum": 1, "maximum": 3600, "description": "Bins angulaires de sortie" },
+        "seed": { "type": "integer", "minimum": 0, "maximum": 4294967295, "description": "Graine RNG 32 bits" },
+        "maxsteps": { "type": "integer", "minimum": 1, "maximum": 1000000, "description": "Étapes max par photon" }
+      }
+    },
+    "histograms": {
+      "type": "object",
+      "properties": {
+        "hist_weight": { "type": "array", "items": { "type": "number" }, "description": "Poids moyen par bin angulaire" },
+        "hist_count": { "type": "array", "items": { "type": "number" }, "description": "Nombre de photons par bin angulaire" },
+        "hist_collisions": { "type": "array", "items": { "type": "integer" }, "description": "Photons par nombre de collisions" },
+        "hist_depth": { "type": "array", "items": { "type": "number" }, "description": "Poids par bin profondeur" }
+      },
+      "required": ["hist_weight", "hist_count", "hist_collisions", "hist_depth"]
+    },
+    "simOutput": {
+      "type": "object",
+      "required": ["reflected", "transmitted", "absorbed", "out_weight", "photons_in", "mean_collisions", "mean_depth", "nbins", "max_collisions", "ndepth"],
+      "properties": {
+        "reflected": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fraction poids côté entrée" },
+        "transmitted": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fraction poids côté sortie" },
+        "absorbed": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fraction poids absorbée (1 - R - T)" },
+        "out_weight": { "type": "number", "minimum": 0, "maximum": 1, "description": "Poids total sortant (R + T)" },
+        "photons_in": { "type": "integer", "minimum": 0, "description": "Photons effectivement injectés" },
+        "mean_collisions": { "type": "number", "minimum": 0, "description": "Moyenne collisions par photon" },
+        "mean_depth": { "type": "number", "description": "Profondeur moyenne sortie (proj. axe)" },
+        "nbins": { "type": "integer", "minimum": 1, "description": "Nombre de bins angulaires" },
+        "max_collisions": { "type": "integer", "minimum": 1, "description": "Taille histogramme collisions" },
+        "ndepth": { "type": "integer", "minimum": 1, "description": "Nombre de bins profondeur" }
+      }
+    }
+  },
+  "allOf": [
+    { "$ref": "#/definitions/simInput" },
+    { "$ref": "#/definitions/histograms" }
+  ]
+}

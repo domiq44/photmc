@@ -1,0 +1,58 @@
+name: CI
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Compilation C ---
+      - name: Compile C (make)
+        run: make
+
+      # --- Tests ---
+      - name: Run tests (make test)
+        run: make test
+
+      # --- Installation Emscripten + compilation WASM ---
+      - name: Install Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Compile WebAssembly (make wasm)
+        run: make wasm
+
+      # --- Vérification que les artefacts WASM existent ---
+      - name: Check WASM artifacts
+        run: test -f web/photonmc.js && test -f web/photonmc.wasm
+
+  deploy-pages:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Compile WebAssembly
+        run: make wasm
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web
